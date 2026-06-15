@@ -1,0 +1,8 @@
+# OS / editor junk
+.DS_Store
+**/.DS_Store
+.claude/
+
+# Confidential — never publish (repo is going public via GitHub Pages)
+product-docs/
+meeting_transcription/
