@@ -19,7 +19,7 @@
       cat: "Engineering", icon: "network", color: "#2563EB",
       blurb: "Radio-access performance, faults, config & coverage.",
       datasets: [
-        { name: "Network Performance KPIs", items: "SINR · RSRP · Throughput · Latency", source: "Perf dashboards · T-PIM · IMNOS", status: "connected", phase: "MVP" },
+        { name: "Network Performance KPIs", items: "SINR · RSRP · Throughput · Latency", source: "Generic Performance Counters · Perf dashboards", status: "connected", phase: "MVP" },
         { name: "Accessibility KPIs", items: "RRC · RACH · E-RAB · Call Setup · 5G Reg", source: "Operator perf tools", status: "connected", phase: "MVP" },
         { name: "Retainability KPIs", items: "Handover · DCR · RLF · AFR", source: "Operator perf tools", status: "connected", phase: "MVP" },
         { name: "Network Alarms", items: "Cell-site fault management", source: "UNMS / vendor OSS", status: "connected", phase: "MVP" },
@@ -87,8 +87,8 @@
     { name: "Snowflake", kind: "Data warehouse", status: "connected", letter: "S", color: "#29B5E8" },
     { name: "Operator Ticketing", kind: "ITSM", status: "connected", letter: "T", color: "#2563EB" },
     { name: "UNMS", kind: "Fault management", status: "connected", letter: "U", color: "#16A34A" },
-    { name: "T-PIM", kind: "T-Mobile perf tool", status: "request", letter: "P", color: "#E20074" },
-    { name: "IMNOS", kind: "T-Mobile viz tool", status: "request", letter: "I", color: "#E20074" },
+    { name: "Generic Performance Counters", kind: "Operator perf tool", status: "request", letter: "P", color: "#2563EB" },
+    { name: "Network Visualization Tool", kind: "Operator viz tool", status: "request", letter: "V", color: "#2563EB" },
     { name: "Nokia OSS", kind: "Vendor OSS", status: "available", letter: "N", color: "#124191" },
     { name: "Ericsson OSS", kind: "Vendor OSS", status: "available", letter: "E", color: "#0082F0" },
     { name: "ATOLL", kind: "RF planning", status: "request", letter: "A", color: "#6D28D9" },
@@ -97,6 +97,25 @@
     { name: "RootMetrics", kind: "Crowdsource", status: "request", letter: "R", color: "#00A6A0" },
     { name: "census.gov", kind: "Demographics", status: "available", letter: "C", color: "#1F6FEB" },
   ];
+
+  /* ---------------- Parameter audit vs golden set (Jun-18 feedback #3) ----------------
+     Engineering · config audit: each parameter checked against a standard/"golden"
+     value; non-compliant rows are flagged and tied to the KPI impact they cause. */
+  const PARAM_AUDIT = [
+    { param: "RACH Root Sequence Index", golden: "204", actual: "204", scope: "cluster", impact: "Access" },
+    { param: "p0NominalPUSCH (dBm)", golden: "-90", actual: "-84", scope: "SEA-0042 · S2", impact: "Coverage / uplink", reason: "Uplink power offset above golden → cell-edge access failures & drops" },
+    { param: "Time-To-Trigger (ms)", golden: "320", actual: "160", scope: "SEA-0071 · S1", impact: "Handover", reason: "TTT below golden → ping-pong handovers → drop-call risk" },
+    { param: "Cell Individual Offset (dB)", golden: "0", actual: "3", scope: "SEA-0071 · S1", impact: "Handover", reason: "CIO bias delays handover → radio-link failure at boundary" },
+    { param: "QCI 1 Scheduling Priority", golden: "2", actual: "2", scope: "network", impact: "Voice QoS" },
+    { param: "Max TX Power (dBm)", golden: "46", actual: "43", scope: "SEA-0042 · S2", impact: "Coverage", reason: "Power 3 dB below golden → coverage hole / poor RSRP" },
+    { param: "Software / Baseband Version", golden: "R23.Q2", actual: "R22.Q4", scope: "SEA-0103", impact: "Stability", reason: "Element not on latest version → known retainability defect" },
+    { param: "Inter-freq Handover A5 Threshold", golden: "-110", actual: "-110", scope: "network", impact: "Mobility" },
+  ];
+  PARAM_AUDIT.forEach(p => { p.compliant = p.golden === p.actual; });
+  const paramAuditSummary = {
+    total: PARAM_AUDIT.length,
+    nonCompliant: PARAM_AUDIT.filter(p => !p.compliant).length,
+  };
 
   /* ---------------- Use-case gallery (PRD §2, §7, §8) ---------------- */
   const USE_CASES = [
@@ -182,6 +201,7 @@
 
   window.PX_PLATFORM = {
     CATALOG, CONNECTORS, USE_CASES,
+    PARAM_AUDIT, paramAuditSummary,
     biz: { markets, marketsById, rollup: bizRollup },
     statusMeta: {
       connected: { pill: "ok", label: "Connected" },

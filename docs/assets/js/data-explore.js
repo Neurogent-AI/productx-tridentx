@@ -100,6 +100,46 @@
   const signalsById = {};
   CATS.forEach(c => c.signals.forEach(s => { signalsById[s.id] = s; }));
 
+  /* map an explore signal -> a per-site KPI id (engineering only), for the GIS view */
+  const SIG_TO_SITE_KPI = {
+    eng_dcr: "dcr", eng_thrpt: "thrpt", eng_rrc: "rrc", eng_sinr: "sinr", eng_hosr: "hosr", eng_afr: "afr",
+  };
+  function siteKpiOf(sigId) { return SIG_TO_SITE_KPI[sigId] || null; }
+
+  /* Data Layer GIS (Jun-18 feedback #2). For an engineering signal, rank sites by
+     that KPI and plot the worst; otherwise show the whole synthetic footprint. */
+  function drawExploreMap(s) {
+    const kpiId = siteKpiOf(s.id);
+    let sites;
+    if (kpiId) sites = window.PX_DATA.util.topWorstByKpi(kpiId, 40).map(r => r.site);
+    else sites = window.PX_DATA.sites.slice(0, 60);
+    setTimeout(() => { try { window.PXMAP.render("dlMap", sites, { fit: !!kpiId, scroll: false }); } catch (e) {} }, 60);
+  }
+
+  /* Parameter audit vs golden set (Jun-18 feedback #3) — Engineering category */
+  function renderParamAuditCard() {
+    const PF = window.PX_PLATFORM; if (!PF || !PF.PARAM_AUDIT) return "";
+    const rows = PF.PARAM_AUDIT, sum = PF.paramAuditSummary;
+    return `
+      <div class="card mt-16">
+        <div class="card-head"><h3>${icon("chip")} Parameter audit vs golden set</h3>
+          <div class="spacer"></div>
+          <span class="pill ${sum.nonCompliant ? "crit" : "ok"}" style="height:20px"><span class="dot"></span>${sum.nonCompliant}/${sum.total} non-compliant</span></div>
+        <div class="card-body" style="padding:0">
+          <table class="mini" style="width:100%"><thead><tr><th>Parameter</th><th>Golden</th><th>Actual</th><th>Scope</th><th>Status</th></tr></thead>
+          <tbody>${rows.map(p => `<tr${p.compliant ? "" : ' style="background:var(--crit-bg)"'}>
+            <td class="fw-6">${esc(p.param)}<div class="cell-sub">${esc(p.impact)}${p.reason ? " · " + esc(p.reason) : ""}</div></td>
+            <td class="mono">${esc(p.golden)}</td>
+            <td class="mono"${p.compliant ? "" : ' style="color:var(--crit);font-weight:600"'}>${esc(p.actual)}</td>
+            <td class="cell-sub">${esc(p.scope)}</td>
+            <td>${p.compliant ? `<span class="pill ok" style="height:18px"><span class="dot"></span>OK</span>` : `<span class="pill crit" style="height:18px"><span class="dot"></span>Flag</span>`}</td>
+          </tr>`).join("")}</tbody></table>
+        </div>
+        <div class="card-body" style="border-top:1px solid var(--border)"><span class="fs-13 muted">Non-compliant parameters are checked against the operator's standard/"golden" set and tied to the KPI impact they cause (e.g. handover or coverage → drop calls). <a href="#/rca" style="color:var(--brand-700);font-weight:600">Feeds the drop-call RCA →</a></span></div>
+      </div>`;
+  }
+  function wireParamAudit() { /* static for now; rows link via the RCA CTA */ }
+
   /* ---------- correlation ---------- */
   function pearson(a, b) {
     const n = a.length, ma = a.reduce((x, y) => x + y, 0) / n, mb = b.reduce((x, y) => x + y, 0) / n;
@@ -191,12 +231,27 @@
           </div>
         </div>
       </div>
+      <div class="card mt-16">
+        <div class="card-head"><h3>${icon("map")} GIS — ${esc(siteKpiOf(s.id) ? s.name : "network sites")}</h3>
+          <span class="sub">${siteKpiOf(s.id) ? "sites ranked by this KPI · severity-coded" : "site footprint (this signal is network-wide)"}</span></div>
+        <div class="card-body" style="padding:0"><div id="dlMap" style="height:320px;border-radius:0 0 12px 12px"></div></div>
+      </div>
+      ${st.cat === "thirdparty" ? `
+      <div class="card pad mt-16">
+        <div class="row" style="gap:10px;margin-bottom:6px"><span class="pill brand"><span class="dot"></span>Third-party benchmark</span><b class="fs-13">Ookla · OpenSignal · RootMetrics</b></div>
+        <span class="fs-13 muted">Crowdsourced competitive view — what independent sources say about your network vs. competitors. Shown as synthetic/illustrative in the demo; real feeds connect via licensed API in Phase 1 (no scraping).</span>
+      </div>` : ""}
+      ${st.cat === "engineering" ? renderParamAuditCard() : ""}
       <div class="card pad mt-16" style="background:var(--brand-50);border-color:var(--brand-100)">
         <div class="row" style="gap:10px"><span class="pill brand"><span class="dot"></span>Diagnostic</span>
-        <span class="fs-13">Want the <b>why</b>? Correlate this with another category in the <a href="#" id="dlToRca" style="color:var(--brand-700);font-weight:600">RCA engine →</a></span></div>
+        <span class="fs-13">Want the <b>why</b>? Correlate this with another category in the <a href="#" id="dlToRca" style="color:var(--brand-700);font-weight:600">RCA engine →</a>${st.cat === "engineering" && s.id === "eng_dcr" ? ` or open the <a href="#/rca" style="color:var(--brand-700);font-weight:600">guided drop-call RCA →</a>` : ""}</span></div>
       </div>`;
     main.querySelectorAll("[data-s]").forEach(b => b.addEventListener("click", () => { st.sigId = b.dataset.s; st.threshold = null; paintExploreMain(main, opts); }));
     main.querySelector("#dlToRca").addEventListener("click", (e) => { e.preventDefault(); st.tab = "rca"; st.a = s.id; mountView(document.getElementById("view"), opts); });
+
+    // Data Layer GIS map (Jun-18 feedback #2): plot sites for the selected signal
+    drawExploreMap(s);
+    wireParamAudit(main);
 
     // threshold slider bounds
     const vals = s.series, lo = Math.min(...vals), hi = Math.max(...vals);
@@ -211,12 +266,50 @@
       const breaches = vals.filter(v => s.dir === "down" ? v >= st.threshold : v <= st.threshold).length;
       const alertEl = main.querySelector("#dlAlert");
       alertEl.innerHTML = breaches
-        ? `<span class="pill crit"><span class="dot"></span>${breaches} breach${breaches > 1 ? "es" : ""} → alert</span>`
+        ? `<span class="pill crit"><span class="dot"></span>${breaches} breach${breaches > 1 ? "es" : ""} → alert</span>
+           <button class="btn ghost sm" id="dlRoute" style="margin-left:8px">${icon("send")} Route alert</button>`
         : `<span class="pill ok"><span class="dot"></span>Within threshold</span>`;
+      const routeBtn = main.querySelector("#dlRoute");
+      if (routeBtn) routeBtn.addEventListener("click", () => openAlertRouting(s, st.threshold, breaches));
       drawTrend(s);
     }
     slider.addEventListener("input", paintThresh);
     paintThresh();
+  }
+
+  /* ---- proactive alert routing (Jun-18 feedback #3): simulated integrations ---- */
+  function openAlertRouting(s, threshold, breaches) {
+    const targets = [
+      { id: "jira", name: "JIRA", kind: "Create ticket", icon: "ticket", on: true },
+      { id: "snow", name: "ServiceNow", kind: "Open incident", icon: "ticket", on: false },
+      { id: "email", name: "Email", kind: "Notify on-call DL", icon: "send", on: true },
+      { id: "sms", name: "SMS", kind: "Page duty engineer", icon: "bell", on: false },
+    ];
+    const html = `
+      <div class="card-head" style="border-radius:0"><h3>${icon("bell")} Route threshold alert</h3><div class="spacer"></div><button class="iconbtn" data-close>${icon("close")}</button></div>
+      <div class="card-body">
+        <p class="muted fs-13" style="margin-bottom:14px">Threshold breached on <b>${esc(s.name)}</b> (${breaches} point${breaches > 1 ? "s" : ""} past ${esc(s.fmt(round(threshold, 2)))}). Choose where this alert routes — wire it to your ticketing & notification stack.</p>
+        <div id="alertTargets" class="card" style="overflow:hidden">${targets.map(t => `
+          <label class="mini-row" style="cursor:pointer">
+            <input type="checkbox" data-t="${t.id}" ${t.on ? "checked" : ""} style="accent-color:var(--brand-600);width:16px;height:16px" />
+            <span class="nm">${icon(t.icon)} ${esc(t.name)}<span class="cell-sub"> · ${esc(t.kind)}</span></span>
+          </label>`).join("")}</div>
+        <div class="card pad mt-16" style="background:var(--brand-50);border-color:var(--brand-100)">
+          <span class="fs-13"><b>Auto-RCA:</b> on breach, PLATFORMX can attach the guided drop-call RCA to the ticket. <span class="pill brand" style="height:18px">Recommended</span></span>
+        </div>
+      </div>
+      <div class="card-body row" style="justify-content:flex-end;gap:10px;border-top:1px solid var(--border)">
+        <button class="btn ghost" data-close>Cancel</button>
+        <button class="btn primary" id="alertSend">${icon("send")} Send alert</button>
+      </div>`;
+    const m = window.UI.modal(html);
+    m.root.querySelector("#alertSend").addEventListener("click", () => {
+      const picked = Array.from(m.root.querySelectorAll("#alertTargets input:checked")).map(i => i.dataset.t);
+      const names = picked.map(p => targets.find(t => t.id === p).name).join(", ");
+      window.UI.toast(picked.length ? `Alert routed → ${names} (simulated)` : "No targets selected");
+      if (picked.length) m.close();
+    });
+    return m;
   }
 
   function drawTrend(s) {
@@ -285,7 +378,13 @@
     ]);
     // markdown-lite for the insight (bold)
     box.querySelector("#rcaText").innerHTML = explanation(c).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    box.querySelector("#rcaAsk").addEventListener("click", () => {
+    // For the drop-call pair, the "investigate" CTA opens the guided 2-step RCA
+    // (Jun-18 feedback #1). Other pairs hand off to the chat agent.
+    const isDropCall = c.a.id === "eng_dcr" || c.b.id === "eng_dcr";
+    const askBtn = box.querySelector("#rcaAsk");
+    if (isDropCall) askBtn.innerHTML = `${icon("agent")} Investigate drop calls → guided RCA`;
+    askBtn.addEventListener("click", () => {
+      if (isDropCall) { location.hash = "#/rca"; return; }
       const q = `Investigate the correlation between ${c.a.name} and ${c.b.name}`;
       if (opts.onAsk) opts.onAsk(q); else if (window.__openCopilot) window.__openCopilot(q);
     });

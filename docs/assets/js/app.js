@@ -24,6 +24,7 @@
   const NAV = [
     { sect: "Platform" },
     { id: "datalayer", label: "Data Layer", icon: "layers", hash: "#/datalayer" },
+    { id: "rca", label: "Drop-Call RCA", icon: "agent", hash: "#/rca" },
     { id: "marketplace", label: "Data Marketplace", icon: "store", hash: "#/marketplace" },
     { id: "builder", label: "Use-Case Builder", icon: "wand", hash: "#/builder" },
     { id: "gallery", label: "Use-Case Gallery", icon: "grid", hash: "#/gallery" },
@@ -106,7 +107,7 @@
   function renderCopilotWelcome() {
     const scroll = document.getElementById("copilotScroll");
     scroll.innerHTML = `<div class="agent-hero" style="padding-top:14px"><div class="orb" style="width:48px;height:48px;border-radius:14px">${icon("agent")}</div>
-      <h2 style="font-size:17px">PlatformX Agent</h2><p style="font-size:12.5px">One agent across every connected dataset — RF engineering and operator business planning.</p></div>
+      <h2 style="font-size:17px">PLATFORMX Agent</h2><p style="font-size:12.5px">One agent across every connected dataset — RF engineering and operator business planning.</p></div>
       <div class="suggests" id="copSug"></div>`;
     const sug = scroll.querySelector("#copSug");
     window.PLATFORM_AGENT.SUGGESTIONS.forEach(s => { const b = window.UI.el("button", { class: "suggest-chip", html: `${icon(s.icon)}<span>${esc(s.text)}</span>` }); b.addEventListener("click", () => copilotChat.ask(s.text)); sug.appendChild(b); });
@@ -408,6 +409,12 @@
     window.PX_EXPLORE.mountView(view, { onAsk: (q) => openCopilot(q) });
   }
 
+  /* Guided Drop-Call RCA (Jun-18 feedback #1) */
+  function renderRca() {
+    setActive("rca"); crumb([{ label: "Data Layer", hash: "#/datalayer" }, { label: "Drop-Call RCA" }]); state.liveMapId = "rcaMap";
+    window.PX_RCA.mountView(view, { onAsk: (q) => openCopilot(q) });
+  }
+
   /* ============================================================ PREDICTIVE & PRESCRIPTIVE (full product) */
   let advCharts = [];
   const advActions = [
@@ -500,6 +507,7 @@
   function boot() {
     buildNav(); initCopilot();
     window.Router.add("/datalayer", renderDataLayer);
+    window.Router.add("/rca", renderRca);
     window.Router.add("/gallery", renderGallery);
     window.Router.add("/marketplace", renderMarketplace);
     window.Router.add("/builder", renderBuilder);

@@ -282,6 +282,34 @@
     };
   }
 
+  /* ---------- guided drop-call RCA (Jun-18 feedback #1) ---------- */
+  function handleDropCallRca(site) {
+    const RCA = window.PX_RCA;
+    const target = site || RCA.rankByDcr({ kind: "all" }, 1)[0].site;
+    const reasons = RCA.reasonsFor(target);
+    const hits = reasons.filter(r => r.hit);
+    const reasonList = reasons.map(r =>
+      `<div class="mini-row"><span class="hdot ${r.severity}"></span>
+        <span class="nm">${esc(r.label)}<span class="cell-sub"> · ${r.hit ? esc(r.evidence[0]) : "clear"}</span></span>
+        <span class="val cell-sub" style="font-weight:600;color:${r.hit ? (r.severity === "crit" ? "#DC2626" : "#E0900B") : "#16A34A"}">${r.hit ? "Contributing" : "Clear"}</span></div>`).join("");
+    return {
+      steps: [
+        { label: "Parsing request", detail: "intent: drop-call RCA" },
+        { label: "Locating drop-call sites", detail: `${target.area} · ranked by DCR` },
+        { label: "Running root-cause analysis", detail: "handover · alarms · capacity · radio · coverage" },
+        { label: "Correlating evidence", detail: `${target.alarms.length} alarm(s) · params · KPIs` },
+      ],
+      segments: [
+        { type: "text", text: `Investigating **drop-call rate** on **${target.id}** (${target.area}, ${target.tech}) — currently **DCR ${U().latest(target.kpis.dcr)}%**. I checked the five failure domains:\n` },
+        { type: "embed", html: `<div class="embed"><div class="embed-head">${icon("agent")}RCA · ${target.id} — five failure domains</div>${reasonList}</div>` },
+        { type: "map", siteIds: [target.id] },
+        { type: "text", text: `\n${RCA.verdict(target)}${hits.length > 1 ? ` Secondary factor: **${hits[1].label.toLowerCase()}**.` : ""}\n\nVoice-core failure modes (IMS/SIP timeouts, RTP starvation, EN-DC/SRVCC, QCI/5QI) are a **deeper layer that needs operator core data** (Phase 1). Use **Open the guided RCA** below for the full step-by-step view.` },
+      ],
+      citations: [cite("KPI store · retainability"), cite("Fault mgmt · alarms", "alarm"), cite("Config audit · golden set", "chip")],
+      followups: ["Open the guided RCA", `Show all alarms on ${target.id}`, "Which sites are underperforming today?"],
+    };
+  }
+
   /* ---------- router ---------- */
   function respond(query) {
     const q = (query || "").trim();
@@ -291,6 +319,10 @@
 
     if (/^(hi|hello|hey|help|what can you|who are you|capabilities)/.test(ql) || ql === "help")
       return handleHelp();
+    if (/(open the guided rca|guided rca|guided drop)/.test(ql)) { location.hash = "#/rca"; return handleDropCallRca(site); }
+    // Drop-call RCA: an "investigate/RCA/why/root-cause" query about drop/dropped calls
+    if (/(drop call|dropped call|dcr|drop-call)/.test(ql) && /(investigat|rca|root cause|root-cause|why|diagnos|analyz|analys)/.test(ql))
+      return handleDropCallRca(site);
     if (/(underperform|worst sites|bad sites|problem sites|degrad|unhealthy|need attention|critical sites)/.test(ql) && !/retain|throughput/.test(ql))
       return handleUnderperforming();
     if (/(throughput|speed|slow data|data rate)/.test(ql) || (kpi === "thrpt"))

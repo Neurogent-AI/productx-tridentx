@@ -126,8 +126,8 @@ input, textarea, select { font-family: inherit; }
 }
 .brand-logo svg { width: 18px; height: 18px; }
 .brand-name { display: flex; flex-direction: column; line-height: 1.05; white-space: nowrap; }
-.brand-name b { font-size: 15px; font-weight: 700; letter-spacing: -.2px; }
-.brand-name span { font-size: 10.5px; color: var(--muted); letter-spacing: .2px; }
+.brand-name b { font-size: 15px; font-weight: 700; letter-spacing: .2px; text-transform: uppercase; }
+.brand-name span { font-size: 10.5px; color: var(--muted); letter-spacing: .3px; text-transform: uppercase; }
 .app.nav-collapsed .brand-name { display: none; }
 
 /* ---- Topbar */

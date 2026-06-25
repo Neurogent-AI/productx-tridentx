@@ -128,10 +128,13 @@
   }
 
   const BIZ_RE = /(densif|invest|churn|retention|market|share|roi|payback|revenue|subscriber|arpu|business|capex|demograph|grow|expand)/i;
+  // RF/network intents that must NOT fall through to the business agent even
+  // though they contain a BIZ_RE substring (e.g. "INVESTigate the drop-call rate").
+  const RF_OVERRIDE_RE = /(drop[ -]?call|dcr|guided rca|rca|alarm|handover|throughput|underperform|site|sector|sinr|rsrp|coverage)/i;
 
   window.BIZ_AGENT = { respond: bizRespond, SUGGESTIONS: BIZ_SUGGEST };
   window.PLATFORM_AGENT = {
-    respond: function (q) { return BIZ_RE.test(q || "") ? bizRespond(q) : window.AGENT.respond(q); },
+    respond: function (q) { return (BIZ_RE.test(q || "") && !RF_OVERRIDE_RE.test(q || "")) ? bizRespond(q) : window.AGENT.respond(q); },
     SUGGESTIONS: [
       { icon: "tower", text: "Which sites are underperforming today?" },
       { icon: "compass", text: "Where should we densify next quarter?" },
