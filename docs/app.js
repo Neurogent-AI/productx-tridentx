@@ -2084,6 +2084,16 @@ function renderAgents(wrap) {
       </div>
     </div>
 
+    <!-- Live Multi-Agent Collaboration Demo (dummy data, cross-agent synthesis) -->
+    <div class="card" style="margin-bottom:14px;border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.04)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;flex-wrap:wrap">
+        <div class="card-title">🎬 Live Demo — Agents Collaborating on Zone Data</div>
+        <button class="btn-primary" style="font-size:11px" id="agentCollabRunBtn" onclick="runAgentCollabDemo()">▶ Run Agent Collaboration</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Demo zone: <b style="color:var(--text)">Renton (98055)</b> · Dummy data · Marketing, Engineering &amp; Customer Service agents each surface a signal for the same zone, then the Orchestrator Agent synthesizes them into one recommendation.</div>
+      <div id="agentCollabTrace" style="display:flex;flex-direction:column;gap:8px;min-height:44px"></div>
+    </div>
+
     <!-- Three Execution Modes (AI-09) -->
     <div class="card" style="margin-bottom:14px">
       <div class="card-title" style="margin-bottom:4px">Three Execution Modes</div>
@@ -2129,6 +2139,61 @@ function renderAgents(wrap) {
       </div>
     </div>
   `;
+}
+
+/* ============================================================
+   LIVE DEMO: single-zone multi-agent collaboration (dummy data)
+   Marketing + Engineering + Customer Service agents each surface
+   one signal for the same zone; Orchestrator synthesizes them.
+   ============================================================ */
+const AGENT_COLLAB_DEMO = {
+  zoneName: 'Renton (98055)',
+  steps: [
+    { agent: 'Marketing Agent', icon: '📊', col: '#8B5CF6',
+      msg: '> Pulling market share for Renton…',
+      result: 'Market Share: <b>29%</b> (cluster avg 51%) — <span style="color:#EF4444">LOW</span>' },
+    { agent: 'Engineering Agent', icon: '📡', col: '#06B6D4',
+      msg: '> Pulling network KPIs for Renton…',
+      result: 'Drop Call Rate: <b>3.1%</b> (thr 2.0%) · Network Score: <b>48/100</b> — <span style="color:#EF4444">POOR</span>' },
+    { agent: 'Customer Service Agent', icon: '💬', col: '#F97316',
+      msg: '> Pulling complaint volume for Renton…',
+      result: '<b>47</b> tickets filed (7d) · CSAT <b>2.8/5</b> — <span style="color:#EF4444">+61% WoW</span>' },
+    { agent: 'Orchestrator Agent', icon: '🧠', col: '#3B82F6',
+      msg: '> Synthesizing signals across Marketing + Engineering + Customer Service…',
+      result: '<b>Renton (98055): INVEST.</b> Low market share (29%) + poor network (48/100) + rising complaints (47 tickets, +61% WoW) confirm a critical zone. Recommend: new cell site build, RF parameter fix, and a targeted win-back campaign. Est. impact: <b>$1.8M ARR</b> at risk.' },
+  ],
+};
+
+function agentCollabWait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runAgentCollabDemo() {
+  const btn = document.getElementById('agentCollabRunBtn');
+  const trace = document.getElementById('agentCollabTrace');
+  if (!btn || !trace) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  trace.innerHTML = '';
+
+  for (const step of AGENT_COLLAB_DEMO.steps) {
+    const row = document.createElement('div');
+    row.style.cssText = `background:var(--surface2);border:1px solid ${step.col}40;border-radius:8px;padding:10px 12px`;
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="font-size:16px">${step.icon}</span>
+        <span style="font-size:12px;font-weight:700;color:${step.col}">${step.agent}</span>
+      </div>
+      <div class="collab-line" style="font-size:11px;color:var(--muted2);font-family:'IBM Plex Mono',monospace">${step.msg}</div>
+    `;
+    trace.appendChild(row);
+    trace.scrollTop = trace.scrollHeight;
+    await agentCollabWait(2000);
+    row.querySelector('.collab-line').innerHTML = step.result;
+    await agentCollabWait(2000);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '↻ Run Again';
 }
 
 /* ============================================================
