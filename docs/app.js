@@ -616,10 +616,15 @@ const RF_ISSUES = [
     ],
     rca: { cause:'EN-DC Desync (Primary)', detail:'5G RSRP ↓ + LTE Anchor Drop ↑ = X2 link failure\n→ Beam tracking failure on mmWave\n→ Cell edge scenario (Bellevue CBD building)', conf:'94%', time:'T-12min', spatial:'Sector 2, 180° beam' },
     fix: 'Adjust beam tilt on Sector 2 from 3° to 6° electrical. Re-enable EN-DC once RSRP > −100 dBm.',
+    params: [
+      { key:'tilt', label:'Sector 2 Electrical Tilt', type:'number', value:6, unit:'°', min:0, max:10, step:1 },
+      { key:'rsrpThreshold', label:'EN-DC Re-enable RSRP Threshold', type:'number', value:-100, unit:'dBm', min:-120, max:-80, step:1 },
+    ],
+    buildFix(p){ return `Adjust beam tilt on Sector 2 from 3° to ${p.tilt}° electrical. Re-enable EN-DC once RSRP > ${p.rsrpThreshold} dBm.`; },
     impact: { conf:'94%', biz:'$114K', subs:'1,240', recovery:'15 min' },
     lat: 47.6101, lng: -122.2015,
     actionability: 87,
-    wfStatus: ['done','done','done','active','pending'],
+    wfStatus: ['done','done','done','active','pending','pending'],
   },
   {
     id: 'red021', site: 'SEA-RED-021', zone: 'Redmond Tech Corridor', sev: 'warning',
@@ -635,10 +640,15 @@ const RF_ISSUES = [
     ],
     rca: { cause:'PRB Exhaustion — Capacity Overload', detail:'Peak-hour traffic surge (B2B campus devices)\n→ No admission control policy active\n→ QCI 1 voice bearers starved', conf:'89%', time:'T-28min', spatial:'All sectors, peak 08:00–10:00' },
     fix: 'Enable dynamic PRB splitting. Set admission control policy. Schedule capacity upgrade for Q3.',
+    params: [
+      { key:'prbSplit', label:'Dynamic PRB Split (target utilisation)', type:'number', value:70, unit:'%', min:50, max:90, step:5 },
+      { key:'admissionPolicy', label:'Admission Control Policy', type:'select', value:'QCI-Priority', options:['QCI-Priority','Strict','Relaxed'] },
+    ],
+    buildFix(p){ return `Enable dynamic PRB splitting at ${p.prbSplit}% target utilisation. Set admission control policy to ${p.admissionPolicy}. Schedule capacity upgrade for Q3.`; },
     impact: { conf:'89%', biz:'$87K', subs:'3,400', recovery:'30 min' },
     lat: 47.6740, lng: -122.1215,
     actionability: 82,
-    wfStatus: ['done','done','active','pending','pending'],
+    wfStatus: ['done','done','active','pending','pending','pending'],
   },
   {
     id: 'sam033', site: 'SEA-SAM-033', zone: 'Sammamish 98074', sev: 'warning',
@@ -654,10 +664,14 @@ const RF_ISSUES = [
     ],
     rca: { cause:'Coverage Hole — Terrain Obstruction', detail:'New residential construction (3-storey)\n→ Blocks LOS from SEA-SAM-033 Sector 1\n→ No neighbouring cell covers the gap', conf:'91%', time:'T-6days', spatial:'Sector 1, eastern 600m radius' },
     fix: 'Deploy small cell at community centre rooftop. Temporary fix: increase tx power on SEA-SAM-033 Sector 1 by 2 dBm.',
+    params: [
+      { key:'txPower', label:'Sector 1 Tx Power Increase', type:'number', value:2, unit:'dB', min:0, max:6, step:0.5 },
+    ],
+    buildFix(p){ return `Deploy small cell at community centre rooftop. Temporary fix: increase tx power on SEA-SAM-033 Sector 1 by ${p.txPower} dBm.`; },
     impact: { conf:'91%', biz:'$43K', subs:'420', recovery:'48 hr' },
     lat: 47.6162, lng: -122.0355,
     actionability: 74,
-    wfStatus: ['done','done','done','done','active'],
+    wfStatus: ['done','done','done','done','done','active'],
   },
   {
     id: 'ren018', site: 'SEA-REN-018', zone: 'Renton', sev: 'critical',
@@ -673,10 +687,15 @@ const RF_ISSUES = [
     ],
     rca: { cause:'CIO Misconfiguration (Primary)', detail:'Cell Individual Offset set to +3 dB (golden: 0 dB)\n→ TTT reduced to 160 ms (golden: 320 ms)\n→ Ping-pong HO at cell boundary → RLF', conf:'96%', time:'T-3hr', spatial:'Sector 2 ↔ SEA-REN-019 boundary' },
     fix: 'Reset CIO to 0 dB on SEA-REN-018 Sector 2. Restore TTT to 320 ms. Monitor HO rate for 30 min post-fix.',
+    params: [
+      { key:'cio', label:'Cell Individual Offset (CIO)', type:'number', value:0, unit:'dB', min:-6, max:6, step:1 },
+      { key:'ttt', label:'Time To Trigger (TTT)', type:'number', value:320, unit:'ms', min:40, max:640, step:40 },
+    ],
+    buildFix(p){ return `Reset CIO to ${p.cio} dB on SEA-REN-018 Sector 2. Restore TTT to ${p.ttt} ms. Monitor HO rate for 30 min post-fix.`; },
     impact: { conf:'96%', biz:'$98K', subs:'2,100', recovery:'10 min' },
     lat: 47.4799, lng: -122.2171,
     actionability: 91,
-    wfStatus: ['done','done','done','active','pending'],
+    wfStatus: ['done','done','done','active','pending','pending'],
   },
 ];
 
@@ -770,7 +789,16 @@ function _renderRFAgentDetail(wrap, issue) {
     { title:'Anomaly Detection',    body:'Agent detected KPI deviation above threshold. Cross-referenced with alarm feed and historical baselines.' },
     { title:'Data Enrichment',      body:'Pulled site config, neighbouring cell data, alarm history and customer complaint tickets for correlation.' },
     { title:'Root Cause Analysis',  body:`RCA engine identified <b>${issue.rca.cause}</b> as primary driver. Confidence: ${issue.rca.conf}.` },
-    { title:'Recommendation Staged',body:`Fix ready: ${issue.fix} Ticket ${issue.ticket} created.` },
+    { title:'Recommendation Staged',body:`Fix ready: ${issue.fix}` },
+    { title:'Ticket Filed',         body:`Trouble ticket auto-filed in ITSM with full diagnostic context attached.
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:8px;font-size:11px">
+        <div><b style="color:var(--text)">Ticket ID:</b> ${issue.ticket}</div>
+        <div><b style="color:var(--text)">Priority:</b> ${issue.sev === 'critical' ? 'P1 – Critical' : 'P2 – High'}</div>
+        <div><b style="color:var(--text)">Category:</b> RF Optimization</div>
+        <div><b style="color:var(--text)">Queue:</b> NOC L2 – RF Engineering</div>
+        <div><b style="color:var(--text)">SLA Due:</b> ${issue.sev === 'critical' ? '2 hrs' : '8 hrs'}</div>
+        <div><b style="color:var(--text)">Status:</b> Filed &amp; Routed</div>
+      </div>` },
     { title:'Execute & Monitor',    body:'Automation Agent ready to push parameter change via NETCONF/YANG. Awaiting Ops Manager approval.' },
   ];
 
@@ -819,8 +847,8 @@ function _renderRFAgentDetail(wrap, issue) {
                   </div>
                   <div class="wf-body">${s.body}
                     ${st === 'active' ? `<div style="margin-top:10px;display:flex;gap:8px">
-                      <button class="btn-primary" style="font-size:11px;padding:5px 12px" onclick="approveAction(event)">Approve &amp; Execute</button>
-                      <button class="btn-secondary" style="font-size:11px;padding:5px 12px">Modify Parameters</button>
+                      <button class="btn-primary" style="font-size:11px;padding:5px 12px" onclick="approveAction(event, '${issue.id}')">Approve &amp; Execute</button>
+                      <button class="btn-secondary" style="font-size:11px;padding:5px 12px" onclick="rfOpenParamModal('${issue.id}')">Modify Parameters</button>
                     </div>` : ''}
                   </div>
                 </div>
@@ -930,7 +958,7 @@ function _renderRFAgentDetail(wrap, issue) {
         <div style="flex:1;font-size:12px;color:var(--muted2)">
           <b style="color:var(--text)">Ready to execute:</b> ${issue.fix} Governance Agent has logged the action for audit trail.
         </div>
-        <button class="btn-primary" style="flex-shrink:0;background:#22C55E;border-color:#22C55E" onclick="approveAction(event)">Execute Recommendation →</button>
+        <button class="btn-primary" style="flex-shrink:0;background:#22C55E;border-color:#22C55E" onclick="approveAction(event, '${issue.id}')">Execute Recommendation →</button>
       </div>
     </div>
   `;
@@ -951,17 +979,126 @@ function _initRFDetailMap(lat, lng, site, type, sev) {
   setTimeout(() => rfMap.invalidateSize(), 80);
 }
 
-window.approveAction = function (event) {
+const RF_TICKET_FILED_STEP_INDEX = 4; // must match the "Ticket Filed" position in wfLabels (_renderRFAgentDetail)
+
+window.approveAction = function (event, issueId) {
+  const issue = RF_ISSUES.find(i => i.id === issueId);
   const btn = event.target;
   btn.textContent = '✓ Approved — Executing…';
   btn.disabled = true;
   btn.style.background = 'var(--green)';
+
   setTimeout(() => {
-    btn.closest('.wf-body').insertAdjacentHTML('beforeend', `
-      <div style="margin-top:8px;background:var(--green-dim);border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:8px;font-size:11px;color:var(--green)">
-        ✓ Parameters pushed to SEA-BELL-047 Sector 2. Monitoring DCR… Ticket TT-2847 created and routed to Ops Team.
-      </div>`);
+    if (!issue) return;
+    const idx = issue.wfStatus.findIndex(s => s === 'active');
+    if (idx === -1) return;
+
+    issue.wfStatus[idx] = 'done';
+    let confirmIdx = idx;
+    let nextIdx = idx + 1;
+    // Approval auto-files the ticket instantly, so skip straight past that step
+    if (nextIdx === RF_TICKET_FILED_STEP_INDEX && nextIdx < issue.wfStatus.length) {
+      issue.wfStatus[nextIdx] = 'done';
+      confirmIdx = nextIdx;
+      nextIdx += 1;
+    }
+    if (nextIdx < issue.wfStatus.length) {
+      issue.wfStatus[nextIdx] = 'active';
+    }
+
+    const wrap = document.getElementById('viewWrap');
+    if (!wrap) return;
+    _destroyExtraMaps();
+    _renderRFAgentDetail(wrap, issue);
+
+    const body = wrap.querySelectorAll('.wf-step')[confirmIdx]?.querySelector('.wf-body');
+    if (body) {
+      body.insertAdjacentHTML('beforeend', `
+        <div style="margin-top:8px;background:var(--green-dim);border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:8px;font-size:11px;color:var(--green)">
+          ✓ Parameters pushed to ${issue.site}. Monitoring DCR… Ticket ${issue.ticket} filed and routed to Ops Team.
+        </div>`);
+    }
   }, 1500);
+};
+
+/* ---------- Modify Parameters modal ---------- */
+window.rfOpenParamModal = function (issueId) {
+  const issue = RF_ISSUES.find(i => i.id === issueId);
+  if (!issue || !issue.params) return;
+
+  const fieldHtml = issue.params.map(p => {
+    if (p.type === 'select') {
+      return `
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--muted2);margin-bottom:5px">${p.label}</label>
+          <select id="rfParam-${p.key}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 8px;font-size:12px;color:var(--text);font-family:inherit">
+            ${p.options.map(o => `<option value="${o}" ${o === p.value ? 'selected' : ''}>${o}</option>`).join('')}
+          </select>
+        </div>`;
+    }
+    return `
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted2);margin-bottom:5px">${p.label}</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input id="rfParam-${p.key}" type="number" value="${p.value}" min="${p.min}" max="${p.max}" step="${p.step}"
+            style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 8px;font-size:12px;color:var(--text);font-family:inherit">
+          <span style="font-size:11px;color:var(--muted);width:36px">${p.unit}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'rfParamModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div class="card" style="width:380px;max-width:calc(100vw - 32px);padding:18px" onclick="event.stopPropagation()">
+      <div style="font-size:13px;font-weight:700;margin-bottom:2px">Modify Parameters</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:14px">${issue.site} · ${issue.type}</div>
+      <div id="rfParamModalFields">${fieldHtml}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+        <button class="btn-secondary" style="font-size:11px;padding:6px 14px" onclick="rfCloseParamModal()">Cancel</button>
+        <button class="btn-primary" style="font-size:11px;padding:6px 14px" onclick="rfSaveParams('${issue.id}')">Save Changes</button>
+      </div>
+    </div>`;
+  overlay.onclick = rfCloseParamModal;
+  document.body.appendChild(overlay);
+};
+
+window.rfCloseParamModal = function () {
+  const overlay = document.getElementById('rfParamModalOverlay');
+  if (overlay) overlay.remove();
+};
+
+window.rfSaveParams = function (issueId) {
+  const issue = RF_ISSUES.find(i => i.id === issueId);
+  if (!issue || !issue.params) return;
+
+  const values = {};
+  issue.params.forEach(p => {
+    const el = document.getElementById(`rfParam-${p.key}`);
+    if (!el) return;
+    const raw = el.value;
+    p.value = p.type === 'select' ? raw : Number(raw);
+    values[p.key] = p.value;
+  });
+  if (typeof issue.buildFix === 'function') {
+    issue.fix = issue.buildFix(values);
+  }
+
+  rfCloseParamModal();
+
+  const wrap = document.getElementById('viewWrap');
+  if (wrap) {
+    _destroyExtraMaps();
+    _renderRFAgentDetail(wrap, issue);
+    const activeBody = wrap.querySelector('.wf-num.active')?.closest('.wf-step')?.querySelector('.wf-body');
+    if (activeBody) {
+      activeBody.insertAdjacentHTML('beforeend', `
+        <div style="margin-top:8px;background:var(--brand-glow);border:1px solid rgba(8,145,178,.3);border-radius:6px;padding:8px;font-size:11px;color:var(--brand)">
+          ✓ Parameters updated. Recommendation revised — review and approve when ready.
+        </div>`);
+    }
+  }
 };
 
 /* ============================================================
@@ -1024,7 +1161,7 @@ function rfHandleHelp() {
   return {
     steps: [{ label: 'Loading capabilities', detail: 'reactive + diagnostic' }],
     segments: [
-      { type: 'text', text: `I'm the **RF Engineer Agent** — I monitor your LTE/5G network across Greater Seattle so you spend less time diagnosing and more time fixing. I'm grounded in **${RF_ISSUES.length} open issues**, **${DATA.alarms.length} alarms**, and live KPI telemetry.\n\nI can:` },
+      { type: 'text', text: `I'm the **Chatbot** — I monitor your LTE/5G network across Greater Seattle so you spend less time diagnosing and more time fixing. I'm grounded in **${RF_ISSUES.length} open issues**, **${DATA.alarms.length} alarms**, and live KPI telemetry.\n\nI can:` },
       { type: 'embed', html: `<div class="rfchat-embed"><div class="rfchat-embed-head">🧠 What I can do</div>${[
         'Find & rank underperforming sites by actionability',
         'Diagnose a KPI dip by correlating alarms + root cause',
@@ -1336,7 +1473,7 @@ function renderRFChat(wrap) {
       <div class="rfchat-head">
         <div class="rfchat-avatar rfchat-avatar-agent" style="width:36px;height:36px;font-size:17px">📡<span class="rfchat-live"></span></div>
         <div>
-          <div style="font-weight:700;font-size:14px">RF Engineer Agent</div>
+          <div style="font-weight:700;font-size:14px">Chatbot</div>
           <div style="font-size:11px;color:var(--muted)">Grounded on ${RF_ISSUES.length} open issues · ${DATA.alarms.length} alarms · reactive + diagnostic</div>
         </div>
         <div style="flex:1"></div>
