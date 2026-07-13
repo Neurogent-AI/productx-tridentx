@@ -1109,12 +1109,35 @@ window.rfSaveParams = function (issueId) {
    + follow-ups — grounded entirely in RF_ISSUES / DATA above.
    ============================================================ */
 const RF_CHAT_SUGGESTIONS = [
+  // Engineering (RF) Agent
   { icon: '🚨', text: 'Which sites are underperforming right now?' },
   { icon: '🔍', text: 'Why is SEA-BELL-047 degraded?' },
-  { icon: '📶', text: 'Summarize the open alarms on the network' },
-  { icon: '📊', text: 'What changed in the network in the last 24 hours?' },
-  { icon: '💰', text: 'Which fix has the highest business impact?' },
+  // Marketing Agent
+  { icon: '📊', text: 'Which zones are the best growth opportunities?' },
+  { icon: '🔄', text: 'Where is churn risk highest right now?' },
+  // Customer Service Agent
+  { icon: '💬', text: 'Which zone has the most customer complaints?' },
+  { icon: '📋', text: 'How is customer sentiment trending?' },
+  // Orchestrator Agent
+  { icon: '🧠', text: 'What are all the agents working on right now?' },
+  { icon: '🗺️', text: 'Give me the cross-domain executive summary' },
 ];
+
+/* Marketing zone dataset — mirrors renderMarketingAgent's zoneData (opportunity $, campaign rec)
+   merged with DATA.zones (insight, action) so chatbot answers stay consistent with the Marketing Agent view. */
+const MKT_ZONES = DATA.zones.map(z => {
+  const opp = {
+    'Bellevue Downtown': { opp: 2100000, rec: 'Launch 5G Premium Campaign', col: '#22C55E' },
+    'Issaquah': { opp: 900000, rec: 'Retail + Digital Expansion', col: '#22C55E' },
+    'Redmond Tech Corridor': { opp: 1200000, rec: 'Enterprise Retention Program', col: '#3B82F6' },
+    'Mercer Island': { opp: 600000, rec: 'VIP Loyalty + ARPU Uplift', col: '#3B82F6' },
+    'Bothell': { opp: 200000, rec: 'Hold — await network fix', col: '#F97316' },
+    'Kirkland Waterfront': { opp: 0, rec: 'Pause ads — churn risk active', col: '#F97316' },
+    'Sammamish (98074)': { opp: 0, rec: 'Block — fix network first', col: '#EF4444' },
+    'Renton': { opp: 0, rec: 'Block — fix network first', col: '#EF4444' },
+  }[z.name] || { opp: 0, rec: 'Monitor', col: '#6B7FA3' };
+  return { ...z, ...opp };
+});
 
 function rfEsc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
@@ -1156,23 +1179,53 @@ function rfKpiTableEmbed(issue) {
     <table class="rfchat-table"><thead><tr><th>KPI</th><th>Now</th><th>Threshold</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+function rfMktZoneListEmbed(zones, title, metric) {
+  const rows = zones.map(z => {
+    const val = metric === 'churn' ? `${z.churn}%` : (z.opp > 0 ? `+$${(z.opp / 1000).toFixed(0)}K` : 'Blocked');
+    const valColor = metric === 'churn' ? (z.churn > 5 ? '#EF4444' : '#22C55E') : z.col;
+    return `<div class="rfchat-row" onclick="navigate('mktgagent')">
+      <span class="rfchat-dot" style="background:${z.col}"></span>
+      <span class="rfchat-nm">${rfEsc(z.name)}<span class="rfchat-sub"> · MS ${z.ms}% · Net ${z.net}/100</span></span>
+      <span class="rfchat-val" style="color:${valColor}">${val}</span>
+    </div>`;
+  }).join('');
+  return `<div class="rfchat-embed"><div class="rfchat-embed-head">📊 ${rfEsc(title)}</div>${rows}</div>`;
+}
+
+function rfAgentStatusEmbed(agents) {
+  const rows = agents.map(a => `<div class="rfchat-row" onclick="navigate('${a.id === 'mkt' ? 'mktgagent' : a.id === 'eng' ? 'rfagent' : 'agents'}')">
+    <span class="rfchat-dot" style="background:${a.status === 'busy' ? '#F97316' : '#22C55E'}"></span>
+    <span class="rfchat-nm">${a.icon} ${rfEsc(a.name)}<span class="rfchat-sub"> · ${rfEsc(a.role)}</span></span>
+    <span class="rfchat-val rfchat-sub">${rfEsc(a.activity[a.activity.length - 1].replace(/^>\s*/, ''))}</span>
+  </div>`).join('');
+  return `<div class="rfchat-embed"><div class="rfchat-embed-head">🧠 Live agent fleet</div>${rows}</div>`;
+}
+
+function rfCxZoneListEmbed(zones, title) {
+  const rows = zones.map(z => `<div class="rfchat-row" onclick="navigate('mktgagent')">
+    <span class="rfchat-dot" style="background:${z.complaints > 100 ? '#EF4444' : z.complaints > 60 ? '#F97316' : '#22C55E'}"></span>
+    <span class="rfchat-nm">${rfEsc(z.name)}<span class="rfchat-sub"> · Sentiment ${z.sentiment}% · Churn ${z.churn}%</span></span>
+    <span class="rfchat-val" style="color:${z.complaints > 100 ? '#EF4444' : z.complaints > 60 ? '#F97316' : '#22C55E'}">${z.complaints}/day</span>
+  </div>`).join('');
+  return `<div class="rfchat-embed"><div class="rfchat-embed-head">💬 ${rfEsc(title)}</div>${rows}</div>`;
+}
+
 /* ---------- intent handlers ---------- */
 function rfHandleHelp() {
   return {
     steps: [{ label: 'Loading capabilities', detail: 'reactive + diagnostic' }],
     segments: [
-      { type: 'text', text: `I'm the **Chatbot** — I monitor your LTE/5G network across Greater Seattle so you spend less time diagnosing and more time fixing. I'm grounded in **${RF_ISSUES.length} open issues**, **${DATA.alarms.length} alarms**, and live KPI telemetry.\n\nI can:` },
+      { type: 'text', text: `I'm the **Chatbot** — your platform-wide copilot across Engineering, Marketing, Customer Service and the Orchestrator. I monitor the LTE/5G network, market share & churn, customer sentiment, and cross-domain agent activity across Greater Seattle. I'm grounded in **${RF_ISSUES.length} open issues**, **${DATA.alarms.length} alarms**, **${MKT_ZONES.length} market zones**, and **${DATA.agents.length} live agents**.\n\nI can:` },
       { type: 'embed', html: `<div class="rfchat-embed"><div class="rfchat-embed-head">🧠 What I can do</div>${[
-        'Find & rank underperforming sites by actionability',
-        'Diagnose a KPI dip by correlating alarms + root cause',
-        'Summarize open alarms for any site or the whole cluster',
-        'Tell you what changed in the network in the last 24 hours',
-        'Rank open issues by business impact so you approve the right fix first',
+        'Find & rank underperforming sites, or diagnose a KPI dip (Engineering)',
+        'Rank market zones by growth opportunity or churn risk (Marketing)',
+        'Rank zones by customer complaints or sentiment trend (Customer Service)',
+        'Synthesize live agent status and cross-domain priorities (Orchestrator)',
       ].map(t => `<div class="rfchat-row" style="cursor:default"><span class="rfchat-dot" style="background:#22C55E"></span><span class="rfchat-nm">${t}</span></div>`).join('')}</div>` },
-      { type: 'text', text: `Try one of the suggestions below, or name a site like \`SEA-BELL-047\`.` },
+      { type: 'text', text: `Try one of the suggestions below, or name a site or zone like \`SEA-BELL-047\` or \`Renton\`.` },
     ],
     citations: [rfCite('Grounded on synthetic dataset', '🧪')],
-    followups: RF_CHAT_SUGGESTIONS.slice(0, 3).map(s => s.text),
+    followups: ['Which sites are underperforming right now?', 'Which zones are the best growth opportunities?', 'Which zone has the most customer complaints?', 'What are all the agents working on right now?'],
   };
 }
 
@@ -1285,6 +1338,104 @@ function rfHandleImpact() {
   };
 }
 
+function rfHandleMktOpportunity() {
+  const ranked = MKT_ZONES.slice().sort((a, b) => b.opp - a.opp);
+  const top = ranked[0];
+  const totalOpp = ranked.reduce((s, z) => s + z.opp, 0);
+  const blocked = ranked.filter(z => z.opp === 0);
+  return {
+    steps: [
+      { label: 'Parsing request', detail: 'intent: rank growth opportunity by zone' },
+      { label: 'Querying campaign model', detail: `${MKT_ZONES.length} market zones` },
+      { label: 'Gating on network health', detail: 'Engineering Agent quality scores' },
+      { label: 'Ranking by revenue potential', detail: `$${(totalOpp / 1000000).toFixed(1)}M addressable` },
+    ],
+    segments: [
+      { type: 'text', text: `I scanned all **${MKT_ZONES.length} market zones** — **$${(totalOpp / 1000000).toFixed(1)}M** in campaign-ready opportunity, with **${blocked.length} zones blocked** until network issues clear. Ranked by revenue potential:\n` },
+      { type: 'embed', html: rfMktZoneListEmbed(ranked, 'Market opportunity — ranked by revenue potential') },
+      { type: 'text', text: `\n**${top.name}** is the top opportunity — market share only **${top.ms}%** despite a strong **${top.net}/100** network score. ${top.insight} Recommended: **${top.rec}**.` },
+    ],
+    citations: [rfCite('Marketing Agent · campaign model', '📊'), rfCite('Engineering Agent · network gating', '📡')],
+    followups: [
+      'Where is churn risk highest right now?',
+      'Which zone has the most customer complaints?',
+      RF_ISSUES.find(i => i.zone === top.name) ? `Why is ${RF_ISSUES.find(i => i.zone === top.name).site} degraded?` : 'Which sites are underperforming right now?',
+    ],
+  };
+}
+
+function rfHandleChurnRisk() {
+  const ranked = MKT_ZONES.slice().sort((a, b) => b.churn - a.churn);
+  const top = ranked[0];
+  const atRisk = ranked.filter(z => z.churn > 5);
+  return {
+    steps: [
+      { label: 'Parsing request', detail: 'intent: rank churn risk by zone' },
+      { label: 'Querying churn radar', detail: `${MKT_ZONES.length} market zones` },
+      { label: 'Correlating with network KPIs', detail: 'DCR ↔ churn (r=0.89)' },
+    ],
+    segments: [
+      { type: 'text', text: `**${atRisk.length} of ${MKT_ZONES.length} zones** are above the 5% churn-risk threshold. Ranked highest churn first:\n` },
+      { type: 'embed', html: rfMktZoneListEmbed(ranked, 'Churn risk — ranked by zone', 'churn') },
+      { type: 'text', text: `\n**${top.name}** has the highest churn (**${top.churn}%**) and the weakest network score (**${top.net}/100**) in the cluster — network quality is the #1 predictor of churn here (every 1% DCR rise → ~0.7% churn increase within 14 days). ${top.insight}` },
+    ],
+    citations: [rfCite('Marketing Agent · churn radar', '🔄'), rfCite('Cross-domain correlation · DCR↔churn 0.89', '🧠')],
+    followups: [
+      'Which zones are the best growth opportunities?',
+      'Which zone has the most customer complaints?',
+      RF_ISSUES.find(i => i.zone === top.name) ? `Why is ${RF_ISSUES.find(i => i.zone === top.name).site} degraded?` : 'Which sites are underperforming right now?',
+    ],
+  };
+}
+
+function rfHandleCX() {
+  const cxAgent = DATA.agents.find(a => a.id === 'cx');
+  const tktKpi = DATA.kpis.find(k => k.id === 'tkt');
+  const csatKpi = DATA.kpis.find(k => k.id === 'csat');
+  const ranked = MKT_ZONES.map(z => ({ ...z, complaints: Math.round(z.churn * 20), sentiment: Math.round(100 - z.churn * 8) }))
+    .sort((a, b) => b.complaints - a.complaints);
+  const top = ranked[0];
+  const linkedIssue = RF_ISSUES.find(i => i.zone === top.name);
+  return {
+    steps: [
+      { label: 'Parsing request', detail: 'intent: rank customer complaints / sentiment by zone' },
+      { label: 'Querying ticket history', detail: `${tktKpi.val} open tickets network-wide` },
+      { label: 'Correlating with churn & network signals', detail: 'VoC + RCA cross-reference' },
+    ],
+    segments: [
+      { type: 'text', text: `Customer Service Agent has **${tktKpi.val} open tickets** network-wide (CSAT **${csatKpi.val}/5**, ${csatKpi.delta} vs 24h). Estimated complaint volume by zone:\n` },
+      { type: 'embed', html: rfCxZoneListEmbed(ranked, 'Customer complaints — ranked by zone') },
+      { type: 'text', text: `\n**${top.name}** has the highest estimated complaint volume (**${top.complaints}/day**), with sentiment down to **${top.sentiment}%**.${linkedIssue ? ` This lines up with the open **${linkedIssue.type}** ticket there (${linkedIssue.ticket}) — the same root cause driving both the complaints and the network KPI dip.` : ''} ${cxAgent.activity[2].replace(/^>\s*/, '')}.` },
+    ],
+    citations: [rfCite('Customer Service Agent · ticket analysis', '💬'), rfCite('CSAT & sentiment model', '📋')],
+    followups: [
+      'Where is churn risk highest right now?',
+      linkedIssue ? `Why is ${linkedIssue.site} degraded?` : 'Which sites are underperforming right now?',
+      'What are all the agents working on right now?',
+    ],
+  };
+}
+
+function rfHandleOrchestrator() {
+  const topIssue = RF_ISSUES.slice().sort((a, b) => b.actionability - a.actionability)[0];
+  const topChurn = MKT_ZONES.slice().sort((a, b) => b.churn - a.churn)[0];
+  const churnIssue = RF_ISSUES.find(i => i.zone === topChurn.name);
+  return {
+    steps: [
+      { label: 'Parsing request', detail: 'intent: cross-domain synthesis' },
+      { label: 'Polling domain agents', detail: `${DATA.agents.length} active` },
+      { label: 'Synthesizing signals', detail: 'Engineering + Marketing + Customer' },
+    ],
+    segments: [
+      { type: 'text', text: `Here's what every agent in the fleet is doing right now:\n` },
+      { type: 'embed', html: rfAgentStatusEmbed(DATA.agents) },
+      { type: 'text', text: `\n**Executive summary:** **${topIssue.site}** (${topIssue.zone}) is the highest-confidence fix in the queue (**${topIssue.actionability}%** actionability, **${topIssue.impact.biz}**/mo at risk). On the market side, **${topChurn.name}** has the highest churn network-wide (**${topChurn.churn}%**)${churnIssue ? ` — tied to the open **${churnIssue.type}** ticket (${churnIssue.ticket}) there, so fixing it also protects that zone's retention` : ', with no open engineering ticket yet'}.` },
+    ],
+    citations: [rfCite('Orchestrator · cross-domain synthesis', '🧠'), rfCite(DATA.agents.length + ' domain agents', '🤖')],
+    followups: ['Which sites are underperforming right now?', 'Which zones are the best growth opportunities?', 'Which zone has the most customer complaints?'],
+  };
+}
+
 function rfHandleSite(issue) {
   return {
     steps: [{ label: 'Parsing request', detail: `status · ${issue.site}` }, { label: 'Loading issue profile' }],
@@ -1318,6 +1469,10 @@ function rfAgentRespond(query) {
   const ql = q.toLowerCase();
   const issue = rfFindIssue(q);
   if (/^(hi|hello|hey|help|what can you|who are you|capabilities)/.test(ql) || ql === 'help') return rfHandleHelp();
+  if (/(growth opportunit|best opportunit|market opportunit|opportunit.*zone|zone.*opportunit|campaign)/.test(ql)) return rfHandleMktOpportunity();
+  if (/(churn risk|churn rate|highest churn|churn.*highest|retention risk)/.test(ql)) return rfHandleChurnRisk();
+  if (/(complaint|ticket volume|customer sentiment|sentiment.*trend|csat|customer service|voc\b)/.test(ql)) return rfHandleCX();
+  if (/(all.*agents|agents.*working|agent status|agents.*doing|executive summary|cross.domain|synthesi[sz]e|orchestrat)/.test(ql)) return rfHandleOrchestrator();
   if (/(underperform|worst sites|bad sites|problem sites|critical sites|need attention|degrad)/.test(ql) && !issue) return rfHandleUnderperforming();
   if (/(business impact|revenue|arr|highest impact|roi|prioritis|prioritiz)/.test(ql)) return rfHandleImpact();
   if (/(alarm|fault)/.test(ql) && !issue) return rfHandleAlarms();
@@ -1353,7 +1508,7 @@ function rfChatAddUser(scrollEl, text) {
 function rfChatAgentShell(scrollEl) {
   const div = document.createElement('div');
   div.className = 'rfchat-msg agent';
-  div.innerHTML = `<div class="rfchat-avatar rfchat-avatar-agent">📡</div><div class="rfchat-body"></div>`;
+  div.innerHTML = `<div class="rfchat-avatar rfchat-avatar-agent">🧠</div><div class="rfchat-body"></div>`;
   scrollEl.appendChild(div);
   return div.querySelector('.rfchat-body');
 }
@@ -1471,17 +1626,17 @@ function renderRFChat(wrap) {
   wrap.innerHTML = `
     <div class="rfchat-shell">
       <div class="rfchat-head">
-        <div class="rfchat-avatar rfchat-avatar-agent" style="width:36px;height:36px;font-size:17px">📡<span class="rfchat-live"></span></div>
+        <div class="rfchat-avatar rfchat-avatar-agent" style="width:36px;height:36px;font-size:17px">🧠<span class="rfchat-live"></span></div>
         <div>
           <div style="font-weight:700;font-size:14px">Chatbot</div>
-          <div style="font-size:11px;color:var(--muted)">Grounded on ${RF_ISSUES.length} open issues · ${DATA.alarms.length} alarms · reactive + diagnostic</div>
+          <div style="font-size:11px;color:var(--muted)">Grounded on ${RF_ISSUES.length} open issues · ${MKT_ZONES.length} market zones · ${DATA.agents.length} agents · reactive + diagnostic</div>
         </div>
         <div style="flex:1"></div>
         <span class="pill pill-brand">● Live</span>
       </div>
       <div class="rfchat-scroll" id="rfChatScroll"></div>
       <div class="rfchat-composer">
-        <input id="rfChatInput" placeholder="Ask about KPIs, alarms, underperforming sites…" autocomplete="off"/>
+        <input id="rfChatInput" placeholder="Ask about KPIs, alarms, market zones, campaigns, agents…" autocomplete="off"/>
         <button class="btn-primary" id="rfChatSend">Send</button>
       </div>
     </div>`;
@@ -1489,9 +1644,9 @@ function renderRFChat(wrap) {
   const scroll = document.getElementById('rfChatScroll');
   scroll.innerHTML = `
     <div class="rfchat-hero">
-      <div class="rfchat-orb">📡</div>
-      <h2>How can I help with the network today?</h2>
-      <p>I'm your Agentic AI RF Engineer. I monitor LTE/5G KPIs, alarms and tickets across Greater Seattle so you spend less time diagnosing and more time fixing.</p>
+      <div class="rfchat-orb">🧠</div>
+      <h2>How can I help across the platform today?</h2>
+      <p>I'm your platform-wide AI copilot — Engineering, Marketing and the Orchestrator in one place. I monitor LTE/5G KPIs, market share & churn, and synthesize cross-domain recommendations so you spend less time digging and more time deciding.</p>
     </div>
     <div style="max-width:680px;margin:8px auto 0">
       <div class="rfchat-sub" style="padding-left:4px;margin-bottom:6px;display:block">Suggested</div>
