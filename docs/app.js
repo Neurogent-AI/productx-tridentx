@@ -449,10 +449,10 @@ function renderBizPlan(wrap) {
     </div>
 
     <div class="summary-cards">
-      <div class="sum-card sum-invest"><div class="sum-n">${cats.invest}</div><div class="sum-l">INVEST</div></div>
-      <div class="sum-card sum-grow"><div class="sum-n">${cats.grow}</div><div class="sum-l">GROW</div></div>
-      <div class="sum-card sum-defend"><div class="sum-n">${cats.defend}</div><div class="sum-l">DEFEND</div></div>
-      <div class="sum-card sum-fix"><div class="sum-n">${cats.fix}</div><div class="sum-l">FIX</div></div>
+      <div class="sum-card sum-invest"><div class="sum-n" id="sumInvest">${cats.invest}</div><div class="sum-l">INVEST</div></div>
+      <div class="sum-card sum-grow"><div class="sum-n" id="sumGrow">${cats.grow}</div><div class="sum-l">GROW</div></div>
+      <div class="sum-card sum-defend"><div class="sum-n" id="sumDefend">${cats.defend}</div><div class="sum-l">DEFEND</div></div>
+      <div class="sum-card sum-fix"><div class="sum-n" id="sumFix">${cats.fix}</div><div class="sum-l">FIX</div></div>
     </div>
 
     <div class="biz-layout">
@@ -518,6 +518,7 @@ function initBizMap() {
   });
 
   window._bizCircles = circles;
+  window._bizFilter = null;
 
   ['All', 'Invest', 'Grow', 'Fix'].forEach(cat => {
     const btn = document.getElementById('layer' + cat);
@@ -526,12 +527,52 @@ function initBizMap() {
       document.querySelectorAll('.map-ctrl-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const filter = cat === 'All' ? null : cat.toLowerCase();
+      window._bizFilter = filter;
       DATA.zones.forEach(z => {
         const c = circles[z.id];
         if (!filter || z.cat === filter) { c.addTo(bizMap); } else { bizMap.removeLayer(c); }
       });
+      updateBizCounts();
     });
   });
+
+  // Recount the INVEST/GROW/DEFEND/FIX cards from whatever is in the viewport.
+  // Bound after the first paint so the initial load keeps the full 8-zone totals.
+  bizMap.whenReady(() => {
+    setTimeout(() => {
+      if (!bizMap) return;
+      bizMap.on('moveend zoomend', updateBizCounts);
+    }, 0);
+  });
+}
+
+/* Counts of zones currently inside the map viewport, honouring the layer filter. */
+function bizVisibleCounts() {
+  const counts = { invest: 0, grow: 0, defend: 0, fix: 0 };
+  if (!bizMap) return counts;
+  const bounds = bizMap.getBounds();
+  DATA.zones.forEach(z => {
+    if (window._bizFilter && z.cat !== window._bizFilter) return;
+    if (bounds.contains([z.lat, z.lng])) counts[z.cat]++;
+  });
+  return counts;
+}
+
+function updateBizCounts() {
+  const counts = bizVisibleCounts();
+  const ids = { invest: 'sumInvest', grow: 'sumGrow', defend: 'sumDefend', fix: 'sumFix' };
+  Object.keys(ids).forEach(k => {
+    const el = document.getElementById(ids[k]);
+    if (el) el.textContent = counts[k];
+  });
+
+  // Keep the "Viewing:" caption in sync, but only while the Zone level is selected —
+  // bizGeoLevel() owns that label for the other levels.
+  const activeGeo = document.querySelector('.geo-btn.active');
+  if (!activeGeo || !/zone/i.test(activeGeo.textContent)) return;
+  const total = counts.invest + counts.grow + counts.defend + counts.fix;
+  const el = document.getElementById('geoLevelLabel');
+  if (el) el.innerHTML = `→ Viewing: <b style="color:var(--text)">Zone level · ${total} zone${total === 1 ? '' : 's'}</b>`;
 }
 
 window.selectZone = function (zid) {
@@ -1743,7 +1784,7 @@ const DL_CATS = [
   ]},
 ];
 
-let dlViewState = { cat: 'engineering', kpiId: 'dcr', chart: null };
+let dlViewState = { cat: 'engineering', kpiId: 'dcr', chart: null, map: null, mapThr: {} };
 let dlViewMode = 'explore';
 
 function renderParamAuditCard() {
@@ -1806,6 +1847,9 @@ function renderDataLayer(wrap) {
   const cat = DL_CATS.find(c => c.id === dlViewState.cat) || DL_CATS[0];
   const kpi = cat.kpis.find(k => k.id === dlViewState.kpiId) || cat.kpis[0];
   dlViewState.cat = cat.id; dlViewState.kpiId = kpi.id;
+  const mapThr = _dlMapThresholds(kpi);
+  const thrStep = Math.abs(mapThr.crit - mapThr.good) > 10 ? 1 : 0.1;
+  const lowerBetter = kpi.dir === 'down';
 
   // After rendering the full template, replace right panel for correlate mode
   const series = genSeries(kpi.base, 24, kpi.noise);
@@ -1899,6 +1943,29 @@ function renderDataLayer(wrap) {
               <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#F97316;margin-right:3px;vertical-align:middle"></span>Degraded</span>
               <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#EF4444;margin-right:3px;vertical-align:middle"></span>Critical</span>
             </div>
+          </div>
+          <!-- User-defined severity thresholds -->
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;background:var(--surface2)">
+            <span style="font-size:11px;color:var(--muted);white-space:nowrap">🎚️ Severity thresholds · <b style="color:var(--text)">${kpi.name}</b></span>
+            <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#16A34A"></span>
+              Good ${lowerBetter ? '≤' : '≥'}
+              <input type="number" id="dlThrGood" value="${mapThr.good}" step="${thrStep}" onchange="dlSetMapThr()"
+                style="width:74px;padding:3px 6px;border:1px solid var(--border2);border-radius:5px;background:var(--surface);color:var(--text);font-size:11.5px;font-family:'IBM Plex Mono',monospace"/>
+            </label>
+            <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#E0900B"></span>
+              Degraded <b class="mono" id="dlThrMid" style="color:var(--muted2);font-weight:500"></b>
+            </span>
+            <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#DC2626"></span>
+              Critical ${lowerBetter ? '>' : '<'}
+              <input type="number" id="dlThrCrit" value="${mapThr.crit}" step="${thrStep}" onchange="dlSetMapThr()"
+                style="width:74px;padding:3px 6px;border:1px solid var(--border2);border-radius:5px;background:var(--surface);color:var(--text);font-size:11.5px;font-family:'IBM Plex Mono',monospace"/>
+            </label>
+            <button onclick="dlResetMapThr()"
+              style="background:transparent;border:1px solid var(--border2);border-radius:5px;color:var(--muted);font-size:11px;padding:3px 9px;cursor:pointer">Reset</button>
+            <span id="dlThrCounts" style="margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap"></span>
           </div>
           <div id="dlKpiMap" style="height:300px"></div>
         </div>
@@ -2039,24 +2106,100 @@ function _getDLSites() {
   return _dlSitesCache;
 }
 
+/* ---- Severity thresholds for the GIS map (user-definable, per KPI) ---- */
+
+/* Per-site value of the current KPI — the number the thresholds are compared against. */
+function _dlSiteValues(kpi) {
+  return _getDLSites().map(s => {
+    const zone = DATA.zones.find(zn => zn.id === s.zoneId);
+    if (!zone) return null;
+    return { site: s, zone, val: _zoneKpiValue(kpi, zone) * (0.85 + s.noise * 0.3) };
+  }).filter(Boolean);
+}
+
+function _dlRound(v) {
+  const a = Math.abs(v);
+  if (a >= 100) return Math.round(v);
+  if (a >= 10) return +v.toFixed(1);
+  if (a >= 1) return +v.toFixed(2);
+  return +v.toFixed(3);
+}
+
+function _dlPct(sorted, p) {
+  if (!sorted.length) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * p)))];
+}
+
+/* Defaults come from the spread of the KPI's own site values, so every KPI opens
+   with a sensible green/amber/red mix regardless of its units. */
+function _dlDefaultThresholds(kpi) {
+  const sorted = _dlSiteValues(kpi).map(d => d.val).sort((a, b) => a - b);
+  return (kpi.dir === 'down')
+    ? { good: _dlRound(_dlPct(sorted, 0.40)), crit: _dlRound(_dlPct(sorted, 0.75)) }
+    : { good: _dlRound(_dlPct(sorted, 0.60)), crit: _dlRound(_dlPct(sorted, 0.25)) };
+}
+
+/* Stored override for this KPI, else the computed default. */
+function _dlMapThresholds(kpi) {
+  return dlViewState.mapThr[kpi.id] || _dlDefaultThresholds(kpi);
+}
+
+/* "down" KPIs (DCR, latency): lower is better. "up" KPIs (throughput): higher is better. */
+function _dlClassify(val, thr, dir) {
+  return (dir === 'down')
+    ? (val <= thr.good ? 'ok' : val <= thr.crit ? 'warn' : 'crit')
+    : (val >= thr.good ? 'ok' : val >= thr.crit ? 'warn' : 'crit');
+}
+
+window.dlSetMapThr = function () {
+  const cat = DL_CATS.find(c => c.id === dlViewState.cat) || DL_CATS[0];
+  const kpi = cat.kpis.find(k => k.id === dlViewState.kpiId) || cat.kpis[0];
+  const g = parseFloat(document.getElementById('dlThrGood').value);
+  const c = parseFloat(document.getElementById('dlThrCrit').value);
+  const def = _dlDefaultThresholds(kpi);
+  dlViewState.mapThr[kpi.id] = {
+    good: isNaN(g) ? def.good : g,
+    crit: isNaN(c) ? def.crit : c
+  };
+  _reinitDLKpiMap();
+};
+
+window.dlResetMapThr = function () {
+  const cat = DL_CATS.find(c => c.id === dlViewState.cat) || DL_CATS[0];
+  const kpi = cat.kpis.find(k => k.id === dlViewState.kpiId) || cat.kpis[0];
+  delete dlViewState.mapThr[kpi.id];
+  const def = _dlDefaultThresholds(kpi);
+  document.getElementById('dlThrGood').value = def.good;
+  document.getElementById('dlThrCrit').value = def.crit;
+  _reinitDLKpiMap();
+};
+
+function _reinitDLKpiMap() {
+  const cat = DL_CATS.find(c => c.id === dlViewState.cat) || DL_CATS[0];
+  const kpi = cat.kpis.find(k => k.id === dlViewState.kpiId) || cat.kpis[0];
+  if (dlViewState.map) {
+    const i = _extraMaps.indexOf(dlViewState.map);
+    if (i >= 0) _extraMaps.splice(i, 1);
+    try { dlViewState.map.remove(); } catch (e) {}
+    dlViewState.map = null;
+  }
+  _initDLKpiMap(kpi);
+}
+
 function _initDLKpiMap(kpi) {
   const HCOLOR = { ok: '#16A34A', warn: '#E0900B', crit: '#DC2626' };
   const map = L.map('dlKpiMap', { center: [47.60, -122.17], zoom: 10, zoomControl: true, attributionControl: false });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
   _extraMaps.push(map);
+  dlViewState.map = map;
 
-  _getDLSites().forEach(s => {
-    const zone = DATA.zones.find(zn => zn.id === s.zoneId);
-    if (!zone) return;
-    // Normalise to a health score (0–100, higher = healthier) regardless of KPI direction.
-    // "down" KPIs (DCR, AFR): low raw score = good network → invert so high health = green.
-    const rawScore = kpi.mapScore(zone);
-    const zoneHealth = kpi.dir === 'down' ? 100 - rawScore : rawScore;
-    const siteHealth = Math.max(0, Math.min(100, zoneHealth + (s.noise - 0.5) * 30));
-    const status = siteHealth >= 65 ? 'ok' : siteHealth >= 38 ? 'warn' : 'crit';
+  const thr = _dlMapThresholds(kpi);
+  const tally = { ok: 0, warn: 0, crit: 0 };
+
+  _dlSiteValues(kpi).forEach(({ site: s, zone, val: siteVal }) => {
+    const status = _dlClassify(siteVal, thr, kpi.dir);
+    tally[status]++;
     const col = HCOLOR[status];
-    const zoneVal = _zoneKpiValue(kpi, zone);
-    const siteVal = zoneVal * (0.85 + s.noise * 0.3);
     const radius = status === 'crit' ? 9.5 : status === 'warn' ? 8 : 6.5;
 
     L.circleMarker([s.lat, s.lng], {
@@ -2074,6 +2217,22 @@ function _initDLKpiMap(kpi) {
     )
     .addTo(map);
   });
+
+  // Degraded is the band between the two cutoffs — derived, never entered directly.
+  const mid = document.getElementById('dlThrMid');
+  if (mid) {
+    const lo = kpi.dir === 'down' ? thr.good : thr.crit;
+    const hi = kpi.dir === 'down' ? thr.crit : thr.good;
+    mid.textContent = `${lo} – ${hi}`;
+  }
+
+  const counts = document.getElementById('dlThrCounts');
+  if (counts) {
+    counts.innerHTML =
+      `<span style="color:#16A34A;font-weight:600">${tally.ok}</span> good · ` +
+      `<span style="color:#E0900B;font-weight:600">${tally.warn}</span> degraded · ` +
+      `<span style="color:#DC2626;font-weight:600">${tally.crit}</span> critical`;
+  }
 
   setTimeout(() => map.invalidateSize(), 80);
 }
