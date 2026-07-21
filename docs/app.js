@@ -1762,7 +1762,7 @@ const DL_CATS = [
     { id:'starlink',  name:'Starlink (Inhouse)',           unit:'%',    dir:'up',   base:79,   noise:5,    mapScore: z => z.net,                  fmt: v => v.toFixed(0)+'%'     },
     { id:'ecolocate', name:'Ecolocate Indoor Quality',     unit:'/10',  dir:'up',   base:6.2,  noise:0.7,  mapScore: z => z.net,                  fmt: v => v.toFixed(1)+'/10'   },
   ]},
-  { id:'gis', name:'GIS / Geospatial', icon:'🗺️', color:'#3B82F6', kpis:[
+  { id:'gis', name:'TBD', icon:'🗺️', color:'#3B82F6', kpis:[
     { id:'2d',     name:'2D Site Coverage',        unit:'%',    dir:'up',   base:91,   noise:2,    mapScore: z => z.net,                  fmt: v => v.toFixed(0)+'%'    },
     { id:'popdns', name:'Population Density',      unit:'k/mi²',dir:'up',  base:4.2,  noise:1,    mapScore: z => (z.ms/75)*100,          fmt: v => v.toFixed(1)+'k'    },
     { id:'fibercov',name:'Fiber Route Coverage',   unit:'%',    dir:'up',   base:64,   noise:5,    mapScore: z => z.net,                  fmt: v => v.toFixed(0)+'%'    },
